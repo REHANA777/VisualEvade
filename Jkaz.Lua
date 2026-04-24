@@ -6,7 +6,6 @@ local RunService = game:GetService("RunService")
 local recording = false
 local playing = false
 local path = {}
-local recordInterval = 0.1
 
 local tpEnabled = true
 local lowPower = false
@@ -35,26 +34,34 @@ local function detectAndHold()
 	end
 end
 
--- 🔥 RECORD (SIMPAN ARAH + POSISI)
+-- 🔥 RECORD (FRAME PERFECT)
 local function startRecord()
 	path = {}
 
-	task.spawn(function()
-		while recording do
-			local _, hum, hrp = getChar()
+	local lastTime = tick()
 
-			table.insert(path, {
-				pos = hrp.Position,
-				dir = hum.MoveDirection
-			})
+	RunService:BindToRenderStep("REC", Enum.RenderPriority.Character.Value + 1, function()
+		if not recording then return end
 
-			task.wait(recordInterval)
-		end
+		local _, hum = getChar()
+
+		local now = tick()
+		local dt = now - lastTime
+		lastTime = now
+
+		table.insert(path, {
+			dir = hum.MoveDirection,
+			dt = dt
+		})
 	end)
 end
 
--- 🔥 SMOOTH REPLAY (PAKAI ARAH)
-local function smoothReplay()
+local function stopRecord()
+	RunService:UnbindFromRenderStep("REC")
+end
+
+-- 🔥 REPLAY (AKURAT)
+local function replay()
 	local _, hum = getChar()
 
 	for _,step in ipairs(path) do
@@ -63,7 +70,7 @@ local function smoothReplay()
 		hum:Move(step.dir, true)
 		detectAndHold()
 
-		RunService.RenderStepped:Wait()
+		task.wait(step.dt)
 	end
 
 	hum:Move(Vector3.zero, true)
@@ -111,20 +118,16 @@ closeBtn.Size = UDim2.new(0,30,0,30)
 closeBtn.Position = UDim2.new(1,-35,0,5)
 closeBtn.Text = "X"
 closeBtn.BackgroundColor3 = Color3.fromRGB(180,50,50)
-closeBtn.TextColor3 = Color3.new(1,1,1)
 
-local function hideGUI()
+closeBtn.MouseButton1Click:Connect(function()
 	frame.Visible = false
 	icon.Visible = true
-end
+end)
 
-local function showGUI()
+icon.MouseButton1Click:Connect(function()
 	frame.Visible = true
 	icon.Visible = false
-end
-
-closeBtn.MouseButton1Click:Connect(hideGUI)
-icon.MouseButton1Click:Connect(showGUI)
+end)
 
 -- BUTTON
 local function btn(txt,y)
@@ -149,7 +152,12 @@ local batBtn = btn("HEMAT OFF",280)
 recBtn.MouseButton1Click:Connect(function()
 	recording = not recording
 	recBtn.Text = recording and "STOP" or "RECORD"
-	if recording then startRecord() end
+
+	if recording then
+		startRecord()
+	else
+		stopRecord()
+	end
 end)
 
 -- PLAY
@@ -160,8 +168,7 @@ playBtn.MouseButton1Click:Connect(function()
 	if playing then
 		task.spawn(function()
 			while playing do
-
-				smoothReplay()
+				replay()
 
 				if tpEnabled then
 					for _,pos in ipairs(tpPoints) do
@@ -175,7 +182,6 @@ playBtn.MouseButton1Click:Connect(function()
 						task.wait(1)
 					end
 				end
-
 			end
 		end)
 	end
@@ -185,6 +191,7 @@ end)
 delBtn.MouseButton1Click:Connect(function()
 	recording = false
 	playing = false
+	stopRecord()
 	path = {}
 	recBtn.Text = "RECORD"
 	playBtn.Text = "PLAY"
